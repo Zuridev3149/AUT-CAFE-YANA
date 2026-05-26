@@ -56,7 +56,7 @@ services:
 
   # 🚀 NUEVO: El Cerebro en Python integrado al ecosistema Yana
   cerebro_python:
-    image: python:3.12-slim
+    image: python:3.11-slim-bullseye
     container_name: yana_python_bot
     restart: always
     ports:
@@ -66,7 +66,7 @@ services:
     volumes:
       - C:/Proyectos/Aut-Cafe-Yana:/app
     working_dir: /app
-    command: sh -c "pip install requests flask && python -u main.py"
+    command: sh -c "apt-get update && apt-get install -y wkhtmltopdf && pip install requests flask imgkit && python -u main.py"
 
 volumes:
   n8n_data:

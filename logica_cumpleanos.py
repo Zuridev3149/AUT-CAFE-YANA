@@ -1,6 +1,8 @@
 from datetime import datetime
-# Reutilizamos la función de envío de tu módulo whatsapp
-from whatsapp import enviar_whatsapp_canje
+
+# 💡 IMPORTANTE: Traemos ambas funciones y el generador
+from whatsapp import enviar_whatsapp_imagen, enviar_whatsapp_canje
+from generador_tarjetas import generar_tarjeta_base64
 
 def procesar_cumpleanos(sesion, graphql_url):
     print("\n🎂 [CUMPLEAÑOS] Iniciando búsqueda de cumpleañeros del día...", flush=True)
@@ -73,16 +75,16 @@ def procesar_cumpleanos(sesion, graphql_url):
             nombre = cumpleanero.get('nombre')
             celular = cumpleanero.get('celular')
             
-            mensaje = (
-                f"¡Buen día, {nombre}! ¡Qué alegría saludarte en este día tan especial! 🥳\n\n"
-                f"Desde aquí, de tu *Cafetería Yana*, te mandamos un abrazo bien 'rompe costillas', "
-                f"cargado de todo el cariño cochabambino. ¡Que pases un cumple de maravilla, rodeado de tu gente y con mucha salud, pues!\n\n"
-                f"Como queremos que tu festejo sea bien *ta'ipa* y dulce, hoy te tenemos un regalito para que acompañes tu cafecito:\n\n"
-                f"🎁 *¡Hoy te invitamos un Muffin de arándanos totalmente gratis!* 🧁✨"
-            )
+            # 🎨 Generamos la tarjeta visual en Base64
+            imagen_b64 = generar_tarjeta_base64(nombre)
             
-            # Usamos la misma función que ya tienes configurada para Evolution API
-            enviar_whatsapp_canje(nombre, celular, mensaje)
+            if imagen_b64:
+                # 🖼️ Pasamos un string vacío ("") en el campo de texto para que mande SÓLO la imagen
+                enviar_whatsapp_imagen(nombre, celular, "", imagen_b64)
+            else:
+                # ⚠️ FALLBACK: Si imgkit falla por alguna razón, mandamos un texto simple como respaldo
+                mensaje_auxiliar = f"¡Feliz Cumpleaños {nombre}! 🥳🎁 Pasa por Cafetería Yana hoy para reclamar tu regalito sorpresa."
+                enviar_whatsapp_canje(nombre, celular, mensaje_auxiliar)
     else:
         print("☕ No hay cumpleañeros hoy.", flush=True)
 
