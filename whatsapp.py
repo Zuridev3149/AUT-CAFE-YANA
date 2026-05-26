@@ -33,10 +33,18 @@ def enviar_whatsapp_imagen(nombre, celular, mensaje_texto, imagen_base64):
         numero_limpio = f"591{numero_limpio}"
 
     # El payload exacto para enviar archivos multimedia (imágenes) en Evolution API
+    # payload = {
+    #     "number": numero_limpio,
+    #     "mediatype": "image",
+    #     "mimetype": "image/jpeg",
+    #     "caption": mensaje_texto,
+    #     "media": imagen_base64
+    # }
+# El payload exacto para enviar archivos multimedia en Evolution API
     payload = {
         "number": numero_limpio,
         "mediatype": "image",
-        "mimetype": "image/jpeg",
+        "mimetype": "image/png",  # <--- CAMBIA ESTO DE jpeg A png
         "caption": mensaje_texto,
         "media": imagen_base64
     }

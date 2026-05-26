@@ -1,13 +1,13 @@
 from datetime import datetime, timezone
-from whatsapp import enviar_whatsapp_canje
+from whatsapp import enviar_whatsapp_canje, enviar_whatsapp_imagen
+from generador_tarjetas import generar_tarjeta_temporada_base64
 
 def procesar_promos_temporada(sesion, graphql_url):
     print("\n🍂 [TEMPORADA] Iniciando búsqueda de promociones estacionales vigentes...", flush=True)
 
-    # Obtenemos la fecha y hora actual en formato ISO 8601 (UTC) para GraphQL
     fecha_actual = datetime.now(timezone.utc).isoformat()
 
-    # 1. Consultar temporadas activas vigentes hoy y sus productos anidados
+    # 1. Consultar temporadas activas vigentes hoy
     query_temporada = """
     query ObtenerTemporadasVigentes($fechaActual: DateTime!) {
       promocionTemporadas(
@@ -21,12 +21,6 @@ def procesar_promos_temporada(sesion, graphql_url):
       ) {
         nodes {
           nombre
-          productosCanjeables {
-            productoCanjeable {
-              nombreProducto
-              puntos
-            }
-          }
         }
       }
     }
@@ -48,68 +42,57 @@ def procesar_promos_temporada(sesion, graphql_url):
         print("❄️ No hay ninguna promoción de temporada activa el día de hoy.", flush=True)
         return {"status": "success", "message": "Sin temporadas vigentes hoy"}, 200
 
-    # Extraer y aplanar los productos de todas las temporadas vigentes
-    nombres_temporadas = []
-    productos_temporada = []
-    
-    for temporada in nodos_temporada:
-        nombres_temporadas.append(temporada.get("nombre"))
-        for pc in temporada.get("productosCanjeables", []):
-            prod = pc.get("productoCanjeable")
-            if prod:
-                productos_temporada.append({
-                    "nombreProducto": prod.get("nombreProducto"),
-                    "puntos": prod.get("puntos", 0)
-                })
+    print(f"🌟 Temporadas activas encontradas: {len(nodos_temporada)}. Se enviará una tarjeta por cada evento.", flush=True)
 
-    if not productos_temporada:
-        return {"status": "success", "message": "Temporada activa pero sin productos asignados"}, 200
-
-    puntos_minimos = min(p["puntos"] for p in productos_temporada)
-    print(f"🌟 Temporadas activas: {', '.join(nombres_temporadas)}. Puntos mínimos: {puntos_minimos}", flush=True)
-
-    # 2. Obtener clientes calificados
+    # 2. Obtener TODOS los clientes
     query_clientes = """
-    query ObtenerClientesCalificados($puntosMin: Int!) {
-      clientes(where: { puntos: { gte: $puntosMin } }) {
-        nodes { id nombre celular puntos }
+    query ObtenerTodosLosClientes {
+      clientes {
+        nodes {
+          id
+          nombre
+          celular
+        }
       }
     }
     """
     try:
-        resp_clientes = sesion.post(graphql_url, json={"query": query_clientes, "variables": {"puntosMin": puntos_minimos}})
+        resp_clientes = sesion.post(graphql_url, json={"query": query_clientes})
         resp_clientes.raise_for_status()
         nodos_clientes = resp_clientes.json().get("data", {}).get("clientes", {}).get("nodes", [])
     except Exception as e:
         return {"status": "error", "message": f"Error clientes: {e}"}, 500
 
-    # 3. Procesar clientes y enviar mensajes
-    print(f"\n📋 Procesando {len(nodos_clientes)} cliente(s) para el menú de temporada...", flush=True)
+    # 3. Procesar envíos (Una iteración separada por CADA temporada activa)
+    mensajes_enviados = 0
     
-    for cliente in nodos_clientes:
-        nombre_cliente = str(cliente.get("nombre", "")).strip()
-        celular = cliente.get("celular")
-        puntos_cliente = cliente.get("puntos", 0)
+    for temporada in nodos_temporada:
+        nombre_temporada = temporada.get("nombre", "Especial")
+        print(f"\n📋 Preparando envíos para el evento: *{nombre_temporada}*...", flush=True)
 
-        if nombre_cliente.lower() in ["anonimo", "anónimo", "cliente anonimo", "", "anonimo(sin registro)"] or not celular:
-            continue
+        for cliente in nodos_clientes:
+            nombre_cliente = str(cliente.get("nombre", "")).strip()
+            celular = cliente.get("celular")
 
-        # Filtrar solo los productos de temporada para los que le alcanza el saldo
-        premios_disponibles = [p["nombreProducto"] for p in productos_temporada if puntos_cliente >= p["puntos"]]
-        if not premios_disponibles:
-            continue
+            if nombre_cliente.lower() in ["anonimo", "anónimo", "cliente anonimo", "", "anonimo(sin registro)"] or not celular:
+                continue
 
-        nombres_temp_str = " y ".join(nombres_temporadas)
-        lista_premios_texto = "\n🍁 - ".join(premios_disponibles)
-        
-        # Mensaje con urgencia (FOMO)
-        mensaje_final = (
-            f"¡Hola, {nombre_cliente}! ✨ Llegó el menú de *{nombres_temp_str}* a Cafetería Yana ☕.\n\n"
-            f"Tenés *{puntos_cliente} puntos* acumulados. ¡Suficientes para probar nuestras especialidades de temporada GRATIS! 🎉\n\n"
-            f"Ya podés canjear tus puntos por:\n"
-            f"🍁 - {lista_premios_texto}\n\n"
-            f"🏃‍♂️ ¡Apurate que estos productos son por tiempo limitado! Avisale al cajero en tu próxima visita. 🍂🌟"
-        )
-        enviar_whatsapp_canje(nombre_cliente, celular, mensaje_final)
+            # 🎨 Generamos el cupón visual INDIVIDUAL para esta temporada específica
+            imagen_b64 = generar_tarjeta_temporada_base64(nombre_cliente, nombre_temporada)
 
-    return {"status": "success", "message": "Procesamiento de temporada ejecutado correctamente"}, 200
+            # ⚠️ TEXTO DE RESPALDO (Solo se envía si el generador de imágenes se cae)
+            mensaje_respaldo = (
+                f"¡Hola, {nombre_cliente}! ✨ Estamos celebrando la temporada de *{nombre_temporada}* en Cafetería Yana ☕.\n\n"
+                f"Por ser parte de nuestra familia, queremos regalarte un *10% de descuento* en todas tus compras. 🎉\n\n"
+                f"🏃‍♂️ ¡Aprovechá que es por tiempo limitado! Solo mostrale este mensaje al cajero. 🍂🌟"
+            )
+            
+            # 🖼️ Enviar SOLO LA IMAGEN pasándole "" como caption
+            if imagen_b64:
+                if enviar_whatsapp_imagen(nombre_cliente, celular, "", imagen_b64):
+                    mensajes_enviados += 1
+            else:
+                if enviar_whatsapp_canje(nombre_cliente, celular, mensaje_respaldo):
+                    mensajes_enviados += 1
+
+    return {"status": "success", "message": f"Procesamiento ejecutado: {mensajes_enviados} tarjetas enviadas"}, 200

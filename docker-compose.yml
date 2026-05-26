@@ -64,7 +64,7 @@ services:
     depends_on:
       - evolution_api
     volumes:
-      - C:/Proyectos/Aut-Cafe-Yana:/app
+      - C:/Proyectos/Aut-Cafe-Yana:/app 
     working_dir: /app
     command: sh -c "apt-get update && apt-get install -y wkhtmltopdf && pip install requests flask imgkit && python -u main.py"
 
